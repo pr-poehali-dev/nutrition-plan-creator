@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,9 +35,16 @@ const SAMPLE_DISHES: Dish[] = [
 
 export default function Index() {
   const [mealPlan, setMealPlan] = useState<MealPlan>({});
-  const [dishDatabase, setDishDatabase] = useState<Dish[]>(SAMPLE_DISHES);
+  const [dishDatabase, setDishDatabase] = useState<Dish[]>(() => {
+    const saved = localStorage.getItem('dishDatabase');
+    return saved ? JSON.parse(saved) : SAMPLE_DISHES;
+  });
   const [activeTab, setActiveTab] = useState('planner');
   const [newDish, setNewDish] = useState<Partial<Dish>>({});
+
+  useEffect(() => {
+    localStorage.setItem('dishDatabase', JSON.stringify(dishDatabase));
+  }, [dishDatabase]);
 
   const addDishToMeal = (day: string, meal: string, dish: Dish) => {
     setMealPlan(prev => ({
@@ -104,6 +111,10 @@ export default function Index() {
       setDishDatabase(prev => [...prev, dish]);
       setNewDish({});
     }
+  };
+
+  const deleteDish = (dishId: string) => {
+    setDishDatabase(prev => prev.filter(d => d.id !== dishId));
   };
 
   return (
@@ -307,9 +318,17 @@ export default function Index() {
               <h2 className="text-2xl font-semibold mb-4">База блюд ({dishDatabase.length})</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {dishDatabase.map(dish => (
-                  <div key={dish.id} className="border rounded-lg p-4 bg-card hover:shadow-lg transition-shadow">
+                  <div key={dish.id} className="border rounded-lg p-4 bg-card hover:shadow-lg transition-shadow relative group">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteDish(dish.id)}
+                    >
+                      <Icon name="Trash2" size={16} />
+                    </Button>
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-lg">{dish.name}</h3>
+                      <h3 className="font-semibold text-lg pr-8">{dish.name}</h3>
                       {dish.link && (
                         <a href={dish.link} target="_blank" rel="noopener noreferrer">
                           <Icon name="ExternalLink" size={16} className="text-primary" />
