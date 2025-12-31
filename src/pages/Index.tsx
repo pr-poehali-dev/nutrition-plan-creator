@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Icon from '@/components/ui/icon';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Dish {
   id: string;
@@ -15,11 +16,12 @@ interface Dish {
   carbs: number;
   calories: number;
   link?: string;
+  description?: string;
 }
 
 interface MealPlan {
   [day: string]: {
-    [meal: string]: Dish[];
+    [meal: string]: Array<Dish & { note?: string }>;
   };
 }
 
@@ -41,6 +43,8 @@ export default function Index() {
   });
   const [activeTab, setActiveTab] = useState('planner');
   const [newDish, setNewDish] = useState<Partial<Dish>>({});
+  const [editingDish, setEditingDish] = useState<Dish | null>(null);
+  const [dishNote, setDishNote] = useState<{day: string, meal: string, dishId: string, note: string} | null>(null);
 
   useEffect(() => {
     localStorage.setItem('dishDatabase', JSON.stringify(dishDatabase));
@@ -106,7 +110,8 @@ export default function Index() {
         fats: newDish.fats,
         carbs: newDish.carbs,
         calories: newDish.calories,
-        link: newDish.link
+        link: newDish.link,
+        description: newDish.description
       };
       setDishDatabase(prev => [...prev, dish]);
       setNewDish({});
@@ -115,6 +120,27 @@ export default function Index() {
 
   const deleteDish = (dishId: string) => {
     setDishDatabase(prev => prev.filter(d => d.id !== dishId));
+  };
+
+  const updateDish = () => {
+    if (editingDish && editingDish.name && editingDish.protein !== undefined && 
+        editingDish.fats !== undefined && editingDish.carbs !== undefined && 
+        editingDish.calories !== undefined) {
+      setDishDatabase(prev => prev.map(d => d.id === editingDish.id ? editingDish : d));
+      setEditingDish(null);
+    }
+  };
+
+  const updateDishNote = (day: string, meal: string, dishId: string, note: string) => {
+    setMealPlan(prev => {
+      const updated = { ...prev };
+      if (updated[day]?.[meal]) {
+        updated[day][meal] = updated[day][meal].map(d => 
+          d.id === dishId ? { ...d, note } : d
+        );
+      }
+      return updated;
+    });
   };
 
   return (
@@ -200,11 +226,49 @@ export default function Index() {
                             >
                               <Icon name="X" size={14} />
                             </Button>
-                            <div className="font-medium mb-1">{dish.name}</div>
+                            <div className="font-medium mb-1 pr-8">{dish.name}</div>
                             <div className="text-xs text-muted-foreground space-y-0.5">
                               <div>Б: {dish.protein}г | Ж: {dish.fats}г | У: {dish.carbs}г</div>
                               <div className="font-semibold text-primary">{dish.calories} ккал</div>
                             </div>
+                            {dish.note && (
+                              <div className="mt-2 text-xs italic text-muted-foreground bg-background/50 rounded px-2 py-1">
+                                {dish.note}
+                              </div>
+                            )}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="mt-1 h-6 text-xs opacity-70 hover:opacity-100"
+                                >
+                                  <Icon name="MessageSquare" size={12} className="mr-1" />
+                                  {dish.note ? 'Изменить' : 'Добавить'} заметку
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Заметка к блюду</DialogTitle>
+                                </DialogHeader>
+                                <Textarea
+                                  placeholder="Например: добавить больше соли, уменьшить порцию..."
+                                  value={dishNote?.dishId === dish.id ? dishNote.note : dish.note || ''}
+                                  onChange={(e) => setDishNote({day, meal, dishId: dish.id, note: e.target.value})}
+                                  rows={4}
+                                />
+                                <Button 
+                                  onClick={() => {
+                                    if (dishNote) {
+                                      updateDishNote(day, meal, dish.id, dishNote.note);
+                                      setDishNote(null);
+                                    }
+                                  }}
+                                >
+                                  Сохранить
+                                </Button>
+                              </DialogContent>
+                            </Dialog>
                           </div>
                         )) || <div className="text-sm text-muted-foreground text-center py-4">Нет блюд</div>}
                       </div>
@@ -307,6 +371,15 @@ export default function Index() {
                     onChange={(e) => setNewDish(prev => ({ ...prev, calories: Number(e.target.value) }))}
                   />
                 </div>
+                <div className="md:col-span-2">
+                  <Label>Описание (необязательно)</Label>
+                  <Textarea
+                    placeholder="Легкое блюдо на завтрак с высоким содержанием клетчатки"
+                    value={newDish.description || ''}
+                    onChange={(e) => setNewDish(prev => ({ ...prev, description: e.target.value }))}
+                    rows={2}
+                  />
+                </div>
               </div>
               <Button onClick={addNewDish} className="mt-4">
                 <Icon name="Plus" size={18} className="mr-2" />
@@ -319,22 +392,35 @@ export default function Index() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {dishDatabase.map(dish => (
                   <div key={dish.id} className="border rounded-lg p-4 bg-card hover:shadow-lg transition-shadow relative group">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteDish(dish.id)}
-                    >
-                      <Icon name="Trash2" size={16} />
-                    </Button>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10"
+                        onClick={() => setEditingDish(dish)}
+                      >
+                        <Icon name="Pencil" size={16} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => deleteDish(dish.id)}
+                      >
+                        <Icon name="Trash2" size={16} />
+                      </Button>
+                    </div>
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-semibold text-lg pr-8">{dish.name}</h3>
+                      <h3 className="font-semibold text-lg pr-16">{dish.name}</h3>
                       {dish.link && (
                         <a href={dish.link} target="_blank" rel="noopener noreferrer">
                           <Icon name="ExternalLink" size={16} className="text-primary" />
                         </a>
                       )}
                     </div>
+                    {dish.description && (
+                      <p className="text-sm text-muted-foreground mb-2 italic">{dish.description}</p>
+                    )}
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Белки:</span>
@@ -454,6 +540,78 @@ export default function Index() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={editingDish !== null} onOpenChange={(open) => !open && setEditingDish(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать блюдо</DialogTitle>
+          </DialogHeader>
+          {editingDish && (
+            <div className="space-y-4">
+              <div>
+                <Label>Название блюда</Label>
+                <Input
+                  value={editingDish.name}
+                  onChange={(e) => setEditingDish(prev => prev ? {...prev, name: e.target.value} : null)}
+                />
+              </div>
+              <div>
+                <Label>Ссылка на рецепт (необязательно)</Label>
+                <Input
+                  value={editingDish.link || ''}
+                  onChange={(e) => setEditingDish(prev => prev ? {...prev, link: e.target.value} : null)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Белки (г)</Label>
+                  <Input
+                    type="number"
+                    value={editingDish.protein}
+                    onChange={(e) => setEditingDish(prev => prev ? {...prev, protein: Number(e.target.value)} : null)}
+                  />
+                </div>
+                <div>
+                  <Label>Жиры (г)</Label>
+                  <Input
+                    type="number"
+                    value={editingDish.fats}
+                    onChange={(e) => setEditingDish(prev => prev ? {...prev, fats: Number(e.target.value)} : null)}
+                  />
+                </div>
+                <div>
+                  <Label>Углеводы (г)</Label>
+                  <Input
+                    type="number"
+                    value={editingDish.carbs}
+                    onChange={(e) => setEditingDish(prev => prev ? {...prev, carbs: Number(e.target.value)} : null)}
+                  />
+                </div>
+                <div>
+                  <Label>Калории</Label>
+                  <Input
+                    type="number"
+                    value={editingDish.calories}
+                    onChange={(e) => setEditingDish(prev => prev ? {...prev, calories: Number(e.target.value)} : null)}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Описание (необязательно)</Label>
+                <Textarea
+                  value={editingDish.description || ''}
+                  onChange={(e) => setEditingDish(prev => prev ? {...prev, description: e.target.value} : null)}
+                  rows={3}
+                />
+              </div>
+              <Button onClick={updateDish} className="w-full">
+                <Icon name="Save" size={18} className="mr-2" />
+                Сохранить изменения
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
